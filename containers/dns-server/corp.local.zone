@@ -1,0 +1,43 @@
+; ==========================================================================
+;  Zone corp.local — Fichier de zone initial
+;  GHOST PIPE Hackathon
+; ==========================================================================
+$TTL 3600
+$ORIGIN corp.local.
+
+@       IN  SOA     ns1.corp.local. admin.corp.local. (
+                    2026040101  ; Serial (YYYYMMDDNN)
+                    3600        ; Refresh (1h)
+                    900         ; Retry (15min)
+                    604800      ; Expire (7j)
+                    300         ; Negative TTL (5min)
+                    )
+
+; ── Serveurs de noms ────────────────────────────────────────────────────────
+@               IN  NS      ns1.corp.local.
+ns1             IN  A       172.20.0.53
+
+; ── Infrastructure ──────────────────────────────────────────────────────────
+gateway         IN  A       172.20.0.1
+firewall        IN  A       172.20.0.254
+
+; ── Serveurs internes ───────────────────────────────────────────────────────
+dc01            IN  A       172.20.0.20
+mail            IN  A       172.20.0.25
+intranet        IN  A       172.20.0.80
+fileserver      IN  A       172.20.0.100
+backup          IN  A       172.20.0.200
+
+; ── Postes de travail ───────────────────────────────────────────────────────
+pc-finance      IN  A       172.20.0.10
+pc-rh           IN  A       172.20.0.11
+pc-direction    IN  A       172.20.0.12
+
+; ── Enregistrements MX et TXT légitimes ─────────────────────────────────────
+@               IN  MX  10  mail.corp.local.
+@               IN  TXT     "v=spf1 mx ~all"
+_dmarc          IN  TXT     "v=DMARC1; p=quarantine; rua=mailto:admin@corp.local"
+
+; ── Alias (CNAME) ──────────────────────────────────────────────────────────
+www             IN  CNAME   intranet.corp.local.
+ftp             IN  CNAME   fileserver.corp.local.

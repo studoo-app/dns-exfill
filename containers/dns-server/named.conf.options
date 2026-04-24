@@ -1,0 +1,60 @@
+// ==========================================================================
+//  GHOST PIPE — Bind9 Options
+//  Configuration volontairement permissive pour le hackathon
+// ==========================================================================
+
+options {
+    directory "/var/cache/bind";
+
+    // Écoute sur toutes les interfaces
+    listen-on { any; };
+    listen-on-v6 { none; };
+
+    // Autoriser les requêtes depuis tous les réseaux du lab
+    allow-query { any; };
+
+    // Récursion activée (réaliste pour un serveur interne)
+    recursion yes;
+    allow-recursion { 172.20.0.0/24; 172.30.0.0/24; };
+
+    // Pas de forwarder — on reste isolé
+    // forwarders { };
+
+    // Transfert de zone autorisé (vulnérabilité volontaire)
+    allow-transfer { any; };
+
+    // Logging verbeux pour analyse
+    querylog yes;
+
+    dnssec-validation no;
+
+    // Taille max des réponses UDP (important pour les gros TXT)
+    max-udp-size 4096;
+    edns-udp-size 4096;
+};
+
+// Logging détaillé dans /var/log/named/
+logging {
+    channel query_log {
+        file "/var/log/named/query.log" versions 3 size 10m;
+        severity info;
+        print-time yes;
+        print-category yes;
+    };
+    channel update_log {
+        file "/var/log/named/update.log" versions 3 size 10m;
+        severity debug 3;
+        print-time yes;
+        print-category yes;
+    };
+    channel default_log {
+        file "/var/log/named/default.log" versions 3 size 10m;
+        severity info;
+        print-time yes;
+    };
+
+    category queries { query_log; };
+    category update { update_log; };
+    category update-security { update_log; };
+    category default { default_log; };
+};

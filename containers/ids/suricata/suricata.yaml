@@ -1,0 +1,76 @@
+%YAML 1.1
+---
+# ==========================================================================
+#  GHOST PIPE — Configuration Suricata (IDS)
+#  Focus : détection d'exfiltration DNS via TXT records
+# ==========================================================================
+
+vars:
+  address-groups:
+    HOME_NET: "[172.20.0.0/24]"
+    EXTERNAL_NET: "[172.30.0.0/24]"
+    DNS_SERVERS: "[172.20.0.53]"
+  port-groups:
+    DNS_PORTS: "[53]"
+
+# ── Règles ──────────────────────────────────────────────────────────────────
+default-rule-path: /var/lib/suricata/rules
+rule-files:
+  - ghost-pipe.rules
+
+# ── Logs ────────────────────────────────────────────────────────────────────
+stats:
+  enabled: no
+
+outputs:
+  # Alertes rapides (une ligne par alerte)
+  - fast:
+      enabled: yes
+      filename: fast.log
+      append: yes
+
+  # Logs JSON détaillés (EVE)
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types:
+        - alert:
+            metadata: yes
+            tagged-packets: yes
+        - dns:
+            enabled: yes
+            # Log toutes les requêtes ET réponses DNS
+            requests: yes
+            responses: yes
+        - stats:
+            enabled: no
+
+default-log-dir: /var/log/suricata/
+
+# ── Capture ─────────────────────────────────────────────────────────────────
+af-packet:
+  - interface: eth0
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+    use-mmap: yes
+    ring-size: 2048
+
+# ── Protocoles applicatifs ──────────────────────────────────────────────────
+app-layer:
+  protocols:
+    dns:
+      tcp:
+        enabled: yes
+        detection-ports:
+          dp: 53
+      udp:
+        enabled: yes
+        detection-ports:
+          dp: 53
+
+# ── Détection ───────────────────────────────────────────────────────────────
+detect:
+  profile: medium
+  sgh-mpm-context: auto

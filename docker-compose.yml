@@ -1,0 +1,107 @@
+# ============================================================================
+#  OPÉRATION GHOST PIPE — Hackathon DNS Exfiltration
+#  BTS SIO 2 — Journée complète (6-7h)
+# ============================================================================
+#
+#  Architecture :
+#
+#   [net-external 172.30.0.0/24]          [net-internal 172.20.0.0/24]
+#          │                                        │
+#    ┌─────┴─────┐                           ┌──────┴──────┐
+#    │  attacker  │                           │ workstation │
+#    │ 172.30.0.10│                           │ 172.20.0.10 │
+#    └─────┬─────┘                           └──────┬──────┘
+#          │                                        │
+#          │         ┌──────────────┐               │
+#          └─────────┤  dns-server  ├───────────────┘
+#                    │ 172.30.0.53  │
+#                    │ 172.20.0.53  │
+#                    └──────┬───────┘
+#                           │ (network namespace partagé)
+#                    ┌──────┴───────┐
+#                    │  ids-suricata │
+#                    │  (monitoring) │
+#                    └──────────────┘
+#
+# ============================================================================
+
+services:
+
+  # ── Serveur DNS Bind9 (double-homed : interne + externe) ──────────────────
+  dns-server:
+    build: ./containers/dns-server
+    container_name: ghost-dns
+    hostname: ns1.corp.local
+    networks:
+      net-internal:
+        ipv4_address: 172.20.0.53
+      net-external:
+        ipv4_address: 172.30.0.53
+    restart: unless-stopped
+
+  # ── IDS Suricata (partage le namespace réseau du DNS) ─────────────────────
+  ids:
+    build: ./containers/ids
+    container_name: ghost-ids
+    network_mode: "service:dns-server"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    volumes:
+      - suricata-logs:/var/log/suricata
+    depends_on:
+      - dns-server
+    restart: unless-stopped
+
+  # ── Poste de travail compromis (réseau interne uniquement) ────────────────
+  workstation:
+    build: ./containers/workstation
+    container_name: ghost-workstation
+    hostname: pc-finance.corp.local
+    networks:
+      net-internal:
+        ipv4_address: 172.20.0.10
+    dns:
+      - 172.20.0.53
+    depends_on:
+      - dns-server
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  # ── Machine attaquant (réseau externe uniquement) ─────────────────────────
+  attacker:
+    build: ./containers/attacker
+    container_name: ghost-attacker
+    hostname: kali-ext
+    networks:
+      net-external:
+        ipv4_address: 172.30.0.10
+    dns:
+      - 172.30.0.53
+    depends_on:
+      - dns-server
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+# ── Réseaux ─────────────────────────────────────────────────────────────────
+networks:
+  net-internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+          gateway: 172.20.0.1
+
+  net-external:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+          gateway: 172.30.0.1
+
+# ── Volumes ─────────────────────────────────────────────────────────────────
+volumes:
+  suricata-logs:

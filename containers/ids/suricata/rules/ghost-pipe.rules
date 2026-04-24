@@ -1,0 +1,51 @@
+# ==========================================================================
+#  GHOST PIPE — Règles Suricata pour détection d'exfiltration DNS
+# ==========================================================================
+#
+#  ⚠️  RÈGLES INITIALES : détection basique uniquement.
+#  Les étudiants devront les améliorer en Phase 3.
+#
+#  Structure d'une règle Suricata :
+#  action proto src_ip src_port -> dst_ip dst_port (options;)
+#
+# ==========================================================================
+
+# ── NIVEAU 1 : Règles pré-configurées (actives dès le départ) ──────────────
+
+# R1 — Détection de transfert de zone (AXFR)
+alert dns any any -> $DNS_SERVERS $DNS_PORTS (msg:"[GHOST] Tentative de transfert de zone AXFR"; dns.query; content:"corp.local"; dns.opcode:0; sid:1000001; rev:1; classtype:attempted-recon; metadata:severity 2;)
+
+# R2 — Requête DNS TXT (information, pas d'alerte critique)
+alert dns any any -> $DNS_SERVERS $DNS_PORTS (msg:"[GHOST] Requête DNS de type TXT détectée"; dns.query; content:"corp.local"; sid:1000002; rev:1; classtype:policy-violation; metadata:severity 1;)
+
+# ── NIVEAU 2 : Règles à compléter par les étudiants ────────────────────────
+
+# R3 — Détection de sous-domaine suspect "exfil" dans les requêtes
+#       TODO ÉTUDIANT : Activer et adapter cette règle
+# alert dns any any -> $DNS_SERVERS $DNS_PORTS (msg:"[GHOST] Sous-domaine exfil détecté - exfiltration probable"; dns.query; content:"exfil"; nocase; sid:1000003; rev:1; classtype:trojan-activity; metadata:severity 3;)
+
+# R4 — Détection de pattern "chunk-" dans les noms DNS
+#       TODO ÉTUDIANT : Activer et adapter cette règle
+# alert dns any any -> $DNS_SERVERS $DNS_PORTS (msg:"[GHOST] Pattern chunk- détecté dans requête DNS"; dns.query; content:"chunk-"; nocase; sid:1000004; rev:1; classtype:trojan-activity; metadata:severity 3;)
+
+# R5 — Volume anormal de requêtes TXT (threshold)
+#       TODO ÉTUDIANT : Activer et configurer le seuil
+# alert dns any any -> $DNS_SERVERS $DNS_PORTS (msg:"[GHOST] Volume anormal de requêtes DNS TXT - exfiltration en cours"; dns.query; content:"corp.local"; threshold:type both, track by_src, count 20, seconds 60; sid:1000005; rev:1; classtype:trojan-activity; metadata:severity 4;)
+
+# R6 — Mise à jour dynamique DNS (nsupdate) depuis le réseau interne
+#       TODO ÉTUDIANT : Écrire cette règle complètement
+#       Indice : les mises à jour DNS utilisent l'opcode 5 (UPDATE)
+#       et le port destination 53
+# sid:1000006
+
+# R7 — Réponse DNS TXT de grande taille (potentiel exfil payload)
+#       TODO ÉTUDIANT : Écrire une règle basée sur dsize
+#       Indice : une réponse TXT légitime dépasse rarement 300 octets
+# sid:1000007
+
+# ── NIVEAU 3 : Règle avancée (bonus) ───────────────────────────────────────
+
+# R8 — Détection de données encodées en Base64 dans les réponses TXT
+#       BONUS : Utiliser pcre pour détecter des patterns base64
+#       Indice : un chunk base64 contient [A-Za-z0-9+/=]{50,}
+# sid:1000008

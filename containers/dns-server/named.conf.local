@@ -1,0 +1,22 @@
+// ==========================================================================
+//  GHOST PIPE — Zones locales
+// ==========================================================================
+
+// Inclusion de la clé TSIG pour les mises à jour dynamiques
+include "/etc/bind/update-key.conf";
+
+zone "corp.local" {
+    type master;
+    file "/var/lib/bind/corp.local.zone";
+
+    // ⚠️ Mises à jour dynamiques autorisées :
+    //   - Depuis la workstation (172.20.0.10) SANS clé  → Phase 1a (facile)
+    //   - Avec la clé TSIG "exfil-key"                  → Phase 1b (intermédiaire)
+    allow-update {
+        key "exfil-key";
+        172.20.0.10;
+    };
+
+    // Journalisation des mises à jour
+    journal "/var/lib/bind/corp.local.zone.jnl";
+};

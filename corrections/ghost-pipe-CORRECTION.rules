@@ -1,0 +1,154 @@
+# ==========================================================================
+#  GHOST PIPE — Règles Suricata COMPLÈTES (CORRECTION FORMATEUR)
+#
+#  Ce fichier contient TOUTES les règles activées et documentées.
+#  Le fichier distribué aux étudiants (ghost-pipe.rules) ne contient
+#  que R1 et R2 actives — le reste est commenté / à écrire.
+# ==========================================================================
+
+# ══════════════════════════════════════════════════════════════════════════
+#  NIVEAU 1 — Détection basique (fournies actives)
+# ══════════════════════════════════════════════════════════════════════════
+
+# R1 — Transfert de zone AXFR
+# Pourquoi : Un AXFR depuis un poste qui n'est pas un serveur DNS secondaire
+#            est un signe de reconnaissance réseau.
+# Comment : On matche sur le contenu de la requête DNS contenant le nom de zone.
+alert dns any any -> $DNS_SERVERS $DNS_PORTS ( \
+    msg:"[GHOST] Tentative de transfert de zone AXFR"; \
+    dns.query; content:"corp.local"; \
+    dns.opcode:0; \
+    sid:1000001; rev:1; \
+    classtype:attempted-recon; \
+    metadata:severity 2; \
+)
+
+# R2 — Requête TXT basique
+# Pourquoi : Baseline de détection — chaque requête TXT est loggée.
+#            Seule, cette règle génère beaucoup de bruit (SPF, DMARC...).
+alert dns any any -> $DNS_SERVERS $DNS_PORTS ( \
+    msg:"[GHOST] Requête DNS de type TXT détectée"; \
+    dns.query; content:"corp.local"; \
+    sid:1000002; rev:1; \
+    classtype:policy-violation; \
+    metadata:severity 1; \
+)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  NIVEAU 2 — Détection ciblée (à activer / adapter par les étudiants)
+# ══════════════════════════════════════════════════════════════════════════
+
+# R3 — Sous-domaine "exfil" dans les requêtes
+# Pourquoi : Le mot "exfil" dans un FQDN est un indicateur fort.
+#            En attaque réelle on utiliserait un nom plus discret,
+#            mais le pattern de sous-domaines suspects reste le même.
+# Points d'apprentissage :
+#   - content:"exfil" cherche la chaîne dans le champ DNS query
+#   - nocase rend la recherche insensible à la casse
+alert dns any any -> $DNS_SERVERS $DNS_PORTS ( \
+    msg:"[GHOST] Sous-domaine exfil détecté - exfiltration probable"; \
+    dns.query; content:"exfil"; nocase; \
+    sid:1000003; rev:1; \
+    classtype:trojan-activity; \
+    metadata:severity 3; \
+)
+
+# R4 — Pattern "chunk-" dans les noms DNS
+# Pourquoi : Le naming chunk-001, chunk-002... est caractéristique
+#            d'un découpage de fichier en fragments.
+# Points d'apprentissage :
+#   - Même logique que R3 mais sur un pattern différent
+#   - En production, on chercherait des patterns numériques séquentiels
+alert dns any any -> $DNS_SERVERS $DNS_PORTS ( \
+    msg:"[GHOST] Pattern chunk- détecté dans requête DNS"; \
+    dns.query; content:"chunk-"; nocase; \
+    sid:1000004; rev:1; \
+    classtype:trojan-activity; \
+    metadata:severity 3; \
+)
+
+# R5 — Volume anormal de requêtes TXT (threshold)
+# Pourquoi : 20+ requêtes TXT en 60 secondes depuis la même source
+#            est anormal pour un usage légitime.
+# Points d'apprentissage :
+#   - threshold: agrège les événements avant de déclencher l'alerte
+#   - type both: alerte une fois quand le seuil est atteint, puis
+#     supprime pendant la période
+#   - track by_src: compteur par IP source
+#   - C'est LA règle la plus utile en production car elle ne dépend
+#     pas du naming des sous-domaines
+alert dns any any -> $DNS_SERVERS $DNS_PORTS ( \
+    msg:"[GHOST] Volume anormal de requêtes DNS TXT (>20/min)"; \
+    dns.query; content:"corp.local"; \
+    threshold:type both, track by_src, count 20, seconds 60; \
+    sid:1000005; rev:1; \
+    classtype:trojan-activity; \
+    metadata:severity 4; \
+)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  NIVEAU 2+ — Règles à écrire entièrement par les étudiants
+# ══════════════════════════════════════════════════════════════════════════
+
+# R6 — Détection de mise à jour dynamique DNS (nsupdate)
+# Pourquoi : Les mises à jour dynamiques utilisent un opcode spécifique (5)
+#            dans le protocole DNS. Un poste de travail ne devrait JAMAIS
+#            envoyer de DNS UPDATE.
+# Points d'apprentissage :
+#   - L'opcode DNS 5 = UPDATE (RFC 2136)
+#   - Le trafic DNS n'est pas que des requêtes/réponses classiques
+#   - La détection par opcode est plus fiable que par contenu
+# Note technique : Suricata ne supporte pas dns.opcode:5 directement
+#   pour les updates. On utilise un match sur le contenu brut du paquet.
+#   L'octet d'opcode est dans le header DNS (octets 2-3, bits 1-4).
+#   Opcode 5 = 0x28xx en position header flags.
+alert dns $HOME_NET any -> $DNS_SERVERS $DNS_PORTS ( \
+    msg:"[GHOST] Mise à jour dynamique DNS (nsupdate) détectée"; \
+    content:"|28|"; offset:2; depth:1; \
+    sid:1000006; rev:1; \
+    classtype:trojan-activity; \
+    metadata:severity 4; \
+)
+
+# R7 — Réponse TXT de grande taille
+# Pourquoi : Un TXT légitime (SPF, DMARC, DKIM) fait rarement plus de
+#            300 octets. Un chunk base64 de 250 caractères + overhead DNS
+#            dépasse facilement 300 octets.
+# Points d'apprentissage :
+#   - dsize vérifie la taille du payload UDP
+#   - On surveille les RÉPONSES (DNS_SERVERS -> any), pas les requêtes
+#   - La direction de la règle est inversée par rapport aux autres
+alert dns $DNS_SERVERS $DNS_PORTS -> any any ( \
+    msg:"[GHOST] Réponse DNS TXT volumineuse (>300 octets)"; \
+    dsize:>300; \
+    content:"corp.local"; \
+    sid:1000007; rev:1; \
+    classtype:trojan-activity; \
+    metadata:severity 3; \
+)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  NIVEAU 3 — Règle avancée (bonus)
+# ══════════════════════════════════════════════════════════════════════════
+
+# R8 — Détection de Base64 dans les réponses TXT
+# Pourquoi : Les réponses TXT légitimes contiennent du texte structuré
+#            (v=spf1..., v=DMARC1...). Un blob de 50+ caractères
+#            alphanumériques + /+= est typique de données encodées.
+# Points d'apprentissage :
+#   - pcre permet d'utiliser des expressions régulières
+#   - Le regex cherche un bloc de 50+ caractères base64 consécutifs
+#   - En production, cela détecterait aussi du DNS tunneling classique
+#   - Performance : pcre est coûteux — le content préalable réduit
+#     le nombre de paquets passés au regex
+alert dns $DNS_SERVERS $DNS_PORTS -> any any ( \
+    msg:"[GHOST] Données Base64 détectées dans réponse DNS TXT"; \
+    content:"corp.local"; \
+    pcre:"/[A-Za-z0-9+\/=]{50,}/"; \
+    sid:1000008; rev:1; \
+    classtype:trojan-activity; \
+    metadata:severity 4; \
+)
