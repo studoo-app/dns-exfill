@@ -42,4 +42,4 @@ hackathon-dns-exfil/
 
 ## Licence
 
-Usage pédagogique — BTS SIO — ORT Daniel Mayer, Montreuil.
+Usage pédagogique — BTS SIO
